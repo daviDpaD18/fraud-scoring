@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Install dependencies
+        run: pip install fastapi uvicorn scikit-learn pandas prometheus-client joblib numpy pytest httpx
+
+      - name: Lint
+        run: echo "lint placeholder"
+
+      - name: Test
+        run: echo "test placeholder"
+        
