@@ -32,7 +32,7 @@ def predict(request: PredictRequest):
     fraud = bool(proba > 0.5)
     elapsed = (time.time() - start) * 1000  # Convert to milliseconds
     PREDICTIONS.labels(result="fraud" if fraud else "legitimate").inc()
-    LATENCY.observe(elapsed / 1000)  # Convert to seconds for Prometheus
+    LATENCY.observe(elapsed / 1000)  # Convert to seconds for Prometheusx
     CONFIDENCE.observe(proba)
     return PredictResponse(fraud=fraud, confidence=float(proba), prediction_time_ms=float(elapsed))
 
