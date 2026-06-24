@@ -1,0 +1,28 @@
+name: Promote to Production
+
+on:
+    workflow_dispatch:
+        inputs:
+            reason:
+                description: 'Why are you promoting to production?'
+                required: true
+                type: string
+
+jobs:
+    promote:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+                  token: ${{ secrets.DEPLOY_TOKEN }}
+            - name: Configure git
+              run: |
+                    git config user.name "deploy-bot"
+                    git config user.email "deploy@bot.com"
+            - name: Rebase production onto main
+              run: |
+                    echo "### Promoted to production " >> $GITHUB_STEP_SUMMARY
+                    echo "**Reason:** ${{ inputs.reason}}" >> $GITHUB_STEP_SUMMARY
+                    echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+                    echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
