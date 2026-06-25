@@ -1,0 +1,95 @@
+name: Detect Drift and Retrain
+
+on:
+  schedule:
+    - cron: '0 2 * * *'    # runs daily at 2am
+  workflow_dispatch:         # also manual trigger
+
+jobs:
+  detect-drift:
+    runs-on: ubuntu-latest
+    outputs:
+      drift_detected: ${{ steps.drift.outputs.drift_detected }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Install dependencies
+        run: pip install evidently scikit-learn pandas numpy joblib
+      
+      - name: Download dataset
+        # in a real setup this pulls from S3 or a data store
+        # for this project we commit a small sample
+        run: echo "Using committed dataset"
+      
+      - name: Generate simulated recent predictions
+        run: python generate_drift.py
+      
+      - name: Run drift detection
+        id: drift
+        run: |
+          python src/fraud_scoring/drift_detector.py
+          if [ $? -eq 1 ]; then
+            echo "drift_detected=true" >> $GITHUB_OUTPUT
+            echo "Drift detected — retraining will be triggered"
+          else
+            echo "drift_detected=false" >> $GITHUB_OUTPUT
+            echo "No drift detected — skipping retraining"
+          fi
+      
+      - name: Upload drift report
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-report
+          path: drift_report.html
+
+  retrain:
+    needs: detect-drift
+    if: needs.detect-drift.outputs.drift_detected == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Install dependencies
+        run: pip install scikit-learn pandas numpy joblib mlflow
+      
+      - name: Retrain model
+        id: train
+        run: |
+          python src/fraud_scoring/train.py
+          # train.py exits 0 if new model is better, 1 if not
+          if [ $? -eq 0 ]; then
+            echo "promoted=true" >> $GITHUB_OUTPUT
+          else
+            echo "promoted=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Build and push new image
+        if: steps.train.outputs.promoted == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: prod
+          push: true
+          tags: |
+            ghcr.io/davidpad18/fraud-scoring:main-${{ github.sha }}
+            ghcr.io/davidpad18/fraud-scoring:latest
+      
+      - name: Summary
+        run: |
+          echo "### Retraining Summary" >> $GITHUB_STEP_SUMMARY
+          echo "**Drift detected:** yes" >> $GITHUB_STEP_SUMMARY
+          echo "**Model promoted:** ${{ steps.train.outputs.promoted }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
